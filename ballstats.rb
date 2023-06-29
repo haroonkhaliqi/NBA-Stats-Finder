@@ -1,6 +1,7 @@
 require "http"
 require "tty-prompt"
-require 'tty-table'
+require "tty-table"
+require "tty-box"
 
 system "clear"
 
@@ -9,10 +10,10 @@ pastel = Pastel.new
 puts pastel.decorate(" Welcome to NBA stats finder app! ", :cyan, :on_bright_white, :bold)
 
 while true
-  stats_type = ["Player Stats - Specific Player Stats", "Game Stats - All Stats for Specific Game"]
-  stat = prompt.select(pastel.decorate(" Player Stats or Game Stats? ", :cyan, :on_bright_white, :bold), stats_type)
+  stats_type = ["Player Stats", "Game Score"]
+  stat = prompt.select(pastel.decorate(" Player Stats or Game Score?", :cyan, :on_bright_white, :bold), stats_type)
 
-  if stat == "Player Stats - Specific Player Stats"
+  if stat == "Player Stats"
     puts pastel.decorate(" Enter a Player: ", :cyan, :on_bright_white, :bold)
     player = gets.chomp
     amt = player.split(" ")
@@ -28,36 +29,44 @@ while true
 
     choices = []
 
-    if data["data"].length > 1
+    if data["data"].length == 0
+      puts pastel.decorate("ERROR: PLAYER NOT FOUND", :red, :bold)
+    else
+      if data["data"].length > 1
+        x = 0
+        while x < data["data"].length
+          name = "#{data["data"][x]["first_name"]} #{data["data"][x]["last_name"]}"
+          choices << name
+          x += 1
+        end
+        player = prompt.select(pastel.decorate(" Which player? ", :cyan, :on_bright_white, :bold), choices)
+      elsif data["data"].length == 1
+        num = 0
+      end
+        
+      num = 0
       x = 0
       while x < data["data"].length
-        name = "#{data["data"][x]["first_name"]} #{data["data"][x]["last_name"]}"
-        choices << name
-        x += 1
+        if "#{data["data"][x]["first_name"]} #{data["data"][x]["last_name"]}" == player
+          num = x
+          break
+        else
+          x = x + 1
+        end
       end
-      player = prompt.select(pastel.decorate(" Which player? ", :cyan, :on_bright_white, :bold), choices)
+
+      answer = prompt.yes?(pastel.decorate(" Is #{data["data"][num]["first_name"]} #{data["data"][num]["last_name"]} of the #{data["data"][num]["team"]["full_name"]} correct? ", :cyan, :on_bright_white, :bold))
+      
+      if answer == true
+        player_id = data["data"][num]["id"]
+
+        options = ["Info", "Season Averages"]
+
+        option = prompt.select(pastel.decorate(" What would you like to see of #{data["data"][num]["first_name"]} #{data["data"][num]["last_name"]}? ", :cyan, :on_bright_white, :bold), options)
+      end
     end
 
-    num = 0
-    x = 0
-    while x < data["data"].length
-      if "#{data["data"][x]["first_name"]} #{data["data"][x]["last_name"]}" == player
-        num = x
-        break
-      else
-        x = x + 1
-      end
-    end
-
-    puts prompt.yes?(pastel.decorate(" Is #{data["data"][num]["first_name"]} #{data["data"][num]["last_name"]} of the #{data["data"][num]["team"]["full_name"]} correct? ", :cyan, :on_bright_white, :bold))
-
-    player_id = data["data"][num]["id"]
-
-    options = ["info", "season averages"]
-
-    option = prompt.select(pastel.decorate(" What would you like to see of #{data["data"][num]["first_name"]} #{data["data"][num]["last_name"]}? ", :cyan, :on_bright_white, :bold), options)
-
-    if option == "info"
+    if option == "Info"
       table = TTY::Table.new(
         ["Info Type", "Player Info"],
         [["First Name", data["data"][num]["first_name"]], 
@@ -69,16 +78,24 @@ while true
       )
 
       puts table.render(:ascii)
-    elsif option == "season averages"
+    elsif option == "Season Averages"
       puts pastel.decorate(" Which NBA Season? ", :cyan, :on_bright_white, :bold)
-      season = gets.chomp
-      repo = HTTP.get("https://www.balldontlie.io/api/v1/season_averages?season=#{season}&player_ids[]=#{player_id}")
-      season_avgs = repo.parse(:json)
+      while true
+        season = gets.chomp
+        repo = HTTP.get("https://www.balldontlie.io/api/v1/season_averages?season=#{season}&player_ids[]=#{player_id}")
+        season_avgs = repo.parse(:json)
+        if season_avgs["data"] == []
+          puts pastel.decorate("ERROR: COULD NOT FIND #{data["data"][num]["first_name"].upcase} #{data["data"][num]["last_name"].upcase}'S STATS FOR THE #{season.upcase} NBA SEASON", :red, :bold)
+          puts pastel.decorate(" Please re-enter: Which NBA Season? ", :cyan, :on_bright_white, :bold)
+        else
+          break
+        end
+      end
 
       table = TTY::Table.new(
         [pastel.decorate("NBA Season Averages", :black, :on_bright_white, :bold), pastel.decorate("#{season}/#{season.to_i + 1} Season", :black, :on_bright_white, :bold)],
         [[pastel.bright_black("First Name"), pastel.cyan(data["data"][num]["first_name"])], 
-        [pastel.bright_black("Last_Name"), pastel.cyan(data["data"][num]["last_name"])],
+        [pastel.bright_black("Last Name"), pastel.cyan(data["data"][num]["last_name"])],
         [pastel.bright_black("Games Played"), pastel.cyan(season_avgs["data"][0]["games_played"])],
         [pastel.bright_black("Minutes Per Game"), pastel.cyan(season_avgs["data"][0]["min"])],
         [pastel.bright_black("Points Per Game"), pastel.cyan(season_avgs["data"][0]["pts"])],
@@ -103,7 +120,7 @@ while true
 
       puts table.render(:ascii)
     end
-  elsif stat == "Game Stats - All Players Stats for Specific Game"
+  elsif stat == "Game Score"
     puts pastel.decorate(" Enter the Home Teams Name: ", :cyan, :on_bright_white, :bold)
     team1 = gets.chomp
     puts pastel.decorate(" Enter the Opponents Team Name: ", :cyan, :on_bright_white, :bold)
@@ -112,22 +129,22 @@ while true
     nbas = gets.chomp
     rep =  HTTP.get("https://www.balldontlie.io/api/v1/teams")
     teams = rep.parse(:json)
-    dataa = teams["data"]
+    team_data = teams["data"]
     
 
     x = 0
-    while x < dataa.length
-      if dataa[x]["name"] == team1 || dataa[x]["full_name"] == team1
-        team1id = dataa[x]["id"]
+    while x < team_data.length
+      if team_data[x]["name"] == team1 || team_data[x]["full_name"] == team1
+        team1id = team_data[x]["id"]
         break
       else
         x += 1
       end
     end
     y = 0
-    while y < dataa.length
-      if dataa[y]["name"] == team2 || dataa[y]["full_name"] == team2
-        team2id = dataa[y]["id"]
+    while y < team_data.length
+      if team_data[y]["name"] == team2 || team_data[y]["full_name"] == team2
+        team2id = team_data[y]["id"]
         y += 1
       else
         y += 1
@@ -159,16 +176,28 @@ while true
     
     infor = []
     if game_info.length > 1
-      v = 0
-      while v < game_info.length
-        gg = "#{game_info[v]["home_team"]} #{game_info[v]["home_score"]} vs #{game_info[v]["away_score"]} #{game_info[v]["away_team"]} on #{game_info[v]["day"]}"
+      index = 0
+      while index < game_info.length
+        gg = "#{game_info[index]["home_team"]} #{game_info[index]["home_score"]} vs #{game_info[index]["away_score"]} #{game_info[index]["away_team"]} on #{game_info[index]["day"]}"
         infor << gg
-        v += 1
+        index += 1
       end
-      prompt.select(pastel.decorate(" Which Game? ", :cyan, :on_bright_white, :bold), infor)
+      game = prompt.select(pastel.decorate(" Which Game? ", :cyan, :on_bright_white, :bold), infor)
+      index = 0
+      number = 0
+      while index < game_info.length
+        if game == infor[index]
+          number = index
+          break
+        end
+        index += 1
+      end
     else
-      puts prompt.yes?(pastel.decorate("#{game_info[0]["home_team"]} #{game_info[0]["home_score"]} vs #{game_info[0]["away_score"]} #{game_info[0]["away_team"]} on #{game_info[0]["day"]}", :cyan, :on_bright_white, :bold))
+      prompt.yes?(pastel.decorate("#{game_info[0]["home_team"]} vs #{game_info[0]["away_team"]} on #{game_info[0]["day"]}", :cyan, :on_bright_white, :bold))
+      number = 0
     end
+    box = TTY::Box.frame "Drawing a box in", "terminal emulator", padding: 3, align: :center
+    print TTY::Box.frame "FINAL SCORE \n#{game_info[number.to_i]["home_team"]} #{game_info[number.to_i]["home_score"]} - #{game_info[number.to_i]["away_score"]} #{game_info[number.to_i]["away_team"]}"
   end
 
 
